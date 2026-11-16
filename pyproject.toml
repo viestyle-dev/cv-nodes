@@ -1,0 +1,42 @@
+[project]
+name = "cv-nodes"
+version = "1.0.0"
+description = "A nonoha-engine plugin for computer vision with OpenCV: video file and camera capture, resizing, encoding, color conversion, optical flow, motion grids, moving-object counting and face detection."
+readme = "README.md"
+authors = [{name = "VIE Inc."}]
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+keywords = ["nonoha", "dataflow", "node-graph", "computer-vision", "opencv", "video", "optical-flow", "face-detection"]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0",
+    # 4.x wheels require numpy<2.3, which conflicts with the numpy 2.4 line.
+    "opencv-python>=5.0.0.93",
+]
+
+[project.urls]
+Homepage   = "https://github.com/viestyle-dev/cv-nodes"
+Repository = "https://github.com/viestyle-dev/cv-nodes"
+Issues     = "https://github.com/viestyle-dev/cv-nodes/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "nonoha-core @ git+https://github.com/viestyle-dev/nonoha-core.git@v1.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["cv_nodes"]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.nonoha-hub]
+engine-compatibility = [">=1.0.0", "<2.0.0"]
