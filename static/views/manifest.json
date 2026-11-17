@@ -9,34 +9,77 @@
       "inputs": [
         {
           "name": "image",
-          "accepts": ["u8[?x?]", "u8[?x?x3]", "u8[?x?x4]"],
+          "accepts": [
+            "u8[?x?]",
+            "u8[?x?x3]",
+            "u8[?x?x4]"
+          ],
+          "delivery": "latest",
           "optional": true,
           "description": "Frame to draw under the arrows (gray, or 3/4 channels in colorOrder)"
         },
         {
           "name": "vectors",
-          "accepts": ["f32[?x?x2]"],
+          "accepts": [
+            "f32[?x?x2]"
+          ],
+          "delivery": "latest",
           "description": "(dx, dy) per cell in px/frame: a coarse grid, or a dense flow field (averaged down)"
         }
       ],
       "settings": {
-        "scale": { "type": "number", "default": 6, "description": "Arrow length in screen px per px/frame of motion" },
-        "colorOrder": { "type": "string", "default": "bgr", "enum": ["bgr", "rgb"], "description": "Channel order of 3/4-channel images" },
-        "colorMax": { "type": "number", "default": 0, "description": "Magnitude (px/frame) with the hottest color; 0 = auto" },
-        "dim": { "type": "number", "default": 0.25, "description": "Darken (or lighten) the image toward the background, 0-1" },
-        "spacing": { "type": "number", "default": 24, "description": "Arrow spacing in px when a dense field is averaged down" }
+        "scale": {
+          "type": "number",
+          "default": 6,
+          "min": 0,
+          "max": 1000,
+          "description": "Arrow length in screen px per px/frame of motion"
+        },
+        "colorOrder": {
+          "type": "string",
+          "default": "bgr",
+          "enum": [
+            "bgr",
+            "rgb"
+          ],
+          "description": "Channel order of 3/4-channel images"
+        },
+        "colorMax": {
+          "type": "number",
+          "default": 0,
+          "min": 0,
+          "max": 1000000,
+          "description": "Magnitude (px/frame) with the hottest color; 0 = auto"
+        },
+        "dim": {
+          "type": "number",
+          "default": 0.25,
+          "min": 0,
+          "max": 1,
+          "description": "Darken (or lighten) the image toward the background, 0-1"
+        },
+        "spacing": {
+          "type": "number",
+          "default": 24,
+          "min": 6,
+          "max": 400,
+          "description": "Arrow spacing in px when a dense field is averaged down"
+        }
       },
-      "size": { "width": 400, "height": 260 },
+      "size": {
+        "width": 400,
+        "height": 260
+      },
       "suits": [
-        { "node": "MotionGrid", "port": "vectors" },
-        { "node": "OpticalFlowFarneback", "port": "flow" }
+        {
+          "node": "MotionGrid",
+          "port": "vectors"
+        },
+        {
+          "node": "OpticalFlowFarneback",
+          "port": "flow"
+        }
       ]
     }
-  ],
-  "portHints": [
-    { "node": "VideoFileCapture", "port": "frame", "colorOrder": "bgr" },
-    { "node": "CameraCapture", "port": "frame", "colorOrder": "bgr" },
-    { "node": "Resize", "port": "dst", "colorOrder": "bgr" },
-    { "node": "Imdecode", "port": "image", "colorOrder": "bgr" }
   ]
 }

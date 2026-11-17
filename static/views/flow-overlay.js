@@ -126,11 +126,6 @@ function convertToRgba(src, offset, count, channels, bgr, dst) {
   }
 }
 
-function readNumber(settings, key, fallback, min, max) {
-  const v = typeof settings[key] === "number" ? settings[key] : parseFloat(settings[key])
-  return isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback
-}
-
 export default {
   sdk: 1,
   id: "flow-overlay",
@@ -140,23 +135,29 @@ export default {
     {
       name: "image",
       accepts: ["u8[?x?]", "u8[?x?x3]", "u8[?x?x4]"],
+      delivery: "latest",
       optional: true,
       description: "Frame to draw under the arrows (gray, or 3/4 channels in colorOrder)",
     },
     {
       name: "vectors",
       accepts: ["f32[?x?x2]"],
+      delivery: "latest",
       description: "(dx, dy) per cell in px/frame: a coarse grid, or a dense flow field (averaged down)",
     },
   ],
   settings: {
-    scale: { type: "number", default: 6, description: "Arrow length in screen px per px/frame of motion" },
+    scale: { type: "number", default: 6, min: 0, max: 1000, description: "Arrow length in screen px per px/frame of motion" },
     colorOrder: { type: "string", default: "bgr", enum: ["bgr", "rgb"], description: "Channel order of 3/4-channel images" },
-    colorMax: { type: "number", default: 0, description: "Magnitude (px/frame) with the hottest color; 0 = auto" },
-    dim: { type: "number", default: 0.25, description: "Darken (or lighten) the image toward the background, 0-1" },
-    spacing: { type: "number", default: 24, description: "Arrow spacing in px when a dense field is averaged down" },
+    colorMax: { type: "number", default: 0, min: 0, max: 1e6, description: "Magnitude (px/frame) with the hottest color; 0 = auto" },
+    dim: { type: "number", default: 0.25, min: 0, max: 1, description: "Darken (or lighten) the image toward the background, 0-1" },
+    spacing: { type: "number", default: 24, min: 6, max: 400, description: "Arrow spacing in px when a dense field is averaged down" },
   },
   size: { width: 400, height: 260 },
+  suits: [
+    { node: "MotionGrid", port: "vectors" },
+    { node: "OpticalFlowFarneback", port: "flow" },
+  ],
   mount(el, ctx) {
     const canvas = document.createElement("canvas")
     canvas.style.display = "block"
@@ -211,11 +212,12 @@ export default {
       labelFont = `400 11px ${theme.fontFamily}`
     }
 
+    // Settings arrive resolved by the host (numbers within min..max).
     function readSettings(s) {
-      scale = readNumber(s, "scale", 6, 0, 1000)
-      colorMax = readNumber(s, "colorMax", 0, 0, 1e6)
-      dim = readNumber(s, "dim", 0.25, 0, 1)
-      spacing = readNumber(s, "spacing", 24, 6, 400)
+      scale = s.scale
+      colorMax = s.colorMax
+      dim = s.dim
+      spacing = s.spacing
       const nextBgr = s.colorOrder !== "rgb"
       if (nextBgr !== bgr && pixels && imageChannels >= 3) {
         // Swap R and B in place: the difference between the two orders.
