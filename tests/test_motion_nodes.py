@@ -21,33 +21,42 @@ from cv_nodes import _video_sources
 from cv_nodes._video_sources import open_source
 from cv_nodes.videoio_nodes import VideoFileCaptureNode
 
-# Both readers on Windows; FFmpeg only elsewhere.
-BACKENDS = [
-    "ffmpeg",
-    pytest.param(
-        "media_foundation",
-        marks=pytest.mark.skipif(sys.platform != "win32", reason="Media Foundation is Windows only"),
-    ),
-]
+OUT = (64, 48, "cover")  # the output the test clips are read for
+
+# Every reader, where it can run: OpenCV's FFmpeg everywhere, Media Foundation on
+# Windows, AVFoundation on macOS (with PyObjC), the ffmpeg command where installed.
+BACKENDS = ["opencv_ffmpeg", "media_foundation", "avfoundation", "ffmpeg_command"]
+SCALING_BACKENDS = ["media_foundation", "avfoundation", "ffmpeg_command"]
 
 
 @pytest.fixture(scope="session")
-def media_foundation_decodes(tmp_path_factory):
-    """Whether Media Foundation opens the test clips (Windows Server may lack it)."""
+def readable_backends(tmp_path_factory) -> set[str]:
+    """The readers that open the test clips here (Windows Server may lack Media Foundation)."""
     path = tmp_path_factory.mktemp("probe") / "clip.avi"
     _gray_clip(path)
-    cap = _video_sources._capture(str(path), "media_foundation")
-    if cap is None:
-        return False
-    cap.release()
-    return True
+    readable = set()
+    for name in BACKENDS:
+        source = _video_sources._OPENERS[name](str(path), OUT)
+        if source is not None:
+            readable.add(name)
+            source.release()
+    return readable
+
+
+def _require(name: str, readable: set[str]) -> str:
+    if name not in readable:
+        pytest.skip(f"{name} cannot read the test clips here")
+    return name
 
 
 @pytest.fixture(params=BACKENDS)
 def backend(request):
-    if request.param == "media_foundation" and not request.getfixturevalue("media_foundation_decodes"):
-        pytest.skip("Media Foundation cannot open the test clips here")
-    return request.param
+    return _require(request.param, request.getfixturevalue("readable_backends"))
+
+
+@pytest.fixture(params=SCALING_BACKENDS)
+def scaling_backend(request):
+    return _require(request.param, request.getfixturevalue("readable_backends"))
 
 NEW_TYPES = {
     "Resize", "Imencode", "OpticalFlowFarneback", "BlobCounter",
@@ -213,6 +222,55 @@ def test_blob_counter_finds_moving_square():
     assert node.outputs["mask"].current_values[0].shape == (1, 90, 160)
 
 
+def _blob_masks():
+    """Random masks (opened and not) and shapes that trip border-based stats."""
+    rng = np.random.default_rng(0)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    masks = []
+    for i in range(120):
+        h, w = int(rng.integers(5, 120)), int(rng.integers(5, 200))
+        m = (rng.random((h, w)) < rng.uniform(0.05, 0.7)).astype(np.uint8) * 255
+        masks.append(cv2.morphologyEx(m, cv2.MORPH_OPEN, kernel) if i % 2 else m)
+    ring = np.zeros((40, 40), np.uint8)
+    cv2.circle(ring, (20, 20), 15, 255, 3)
+    island = ring.copy()
+    island[18:23, 18:23] = 255  # a blob inside the ring's hole
+    nested = np.zeros((60, 60), np.uint8)
+    cv2.rectangle(nested, (5, 5), (55, 55), 255, 2)
+    cv2.rectangle(nested, (15, 15), (45, 45), 255, 2)
+    nested[28:32, 28:32] = 255
+    pinhole = np.full((3, 3), 255, np.uint8)
+    pinhole[1, 1] = 0
+    lines = np.zeros((20, 30), np.uint8)
+    lines[2, 3:25] = 255
+    lines[5:18, 7] = 255
+    np.fill_diagonal(lines[8:20, 12:24], 255)
+    diagonal = np.zeros((10, 10), np.uint8)
+    diagonal[2, 2] = diagonal[3, 3] = diagonal[3, 5] = diagonal[4, 4] = 255
+    border = np.zeros((10, 10), np.uint8)
+    border[0, :] = border[:, 9] = 255
+    border[9, 0] = 255
+    checker = (np.indices((16, 16)).sum(0) % 2 * 255).astype(np.uint8)
+    return masks + [ring, island, nested, pinhole, lines, diagonal, border, checker,
+                    np.zeros((10, 10), np.uint8), np.full((10, 12), 255, np.uint8)]
+
+
+def test_blob_stats_match_connected_components():
+    from cv_nodes.video_nodes import _blob_stats
+
+    for mask in _blob_masks():
+        pixels, boxes = _blob_stats(mask)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        # Same blobs (OpenCV's label order depends on its algorithm and thread count).
+        assert sorted(zip(pixels.tolist(), map(tuple, boxes.tolist()))) == sorted(
+            zip(stats[1:n, cv2.CC_STAT_AREA].tolist(), map(tuple, stats[1:n, :4].tolist()))
+        )
+        # Raster order of each blob's first pixel.
+        firsts = [divmod(int(np.flatnonzero(labels.ravel() == k)[0]), mask.shape[1]) for k in range(1, n)]
+        expected = sorted(range(n - 1), key=lambda k: firsts[k])
+        assert boxes.tolist() == stats[1:n, :4][expected].tolist()
+
+
 # --- threaded paths ------------------------------------------------------------------
 
 def test_optical_flow_threaded_delivers_on_loop():
@@ -319,7 +377,7 @@ def test_video_file_capture_loops(tmp_path, backend):
     assert positions[5] == 0  # wrapped to the first frame
 
 
-def _read_one(path, props, readout=1, backend="ffmpeg"):
+def _read_one(path, props, readout=1, backend="opencv_ffmpeg"):
     async def run():
         node = VideoFileCaptureNode("v")
         node.set_properties({**props, "backend": backend})
@@ -399,7 +457,7 @@ def test_file_path_loads_once_and_empty_closes(tmp_path):
 
     async def run():
         node = VideoFileCaptureNode("v")
-        node.set_properties({"width": 64, "height": 48, "backend": "ffmpeg"})
+        node.set_properties({"width": 64, "height": 48, "backend": "opencv_ffmpeg"})
         statuses = []
         node.outputs["loading_status"].subscribe(1, lambda v: statuses.append(int(v[0][0])))
         node._do_activate()
@@ -420,52 +478,108 @@ def test_file_path_loads_once_and_empty_closes(tmp_path):
     assert file_path == ""
 
 
-def test_source_loops_without_hitting_the_end(tmp_path, backend):
+def test_source_loops(tmp_path, backend):
     path = tmp_path / "clip.avi"
     _gray_clip(path)
-    source = open_source(str(path), backend)
+    source = open_source(str(path), backend, OUT)
     assert source is not None and source.backend == backend
     levels, wraps = [], []
     for _ in range(12):
-        frame, wrapped = source.read(loop=True)
+        frame, wrapped = source.read(True, OUT)
         assert frame is not None
         levels.append(_level(frame))
         wraps.append(wrapped)
     assert levels == [0, 40, 80, 120, 160, 0, 40, 80, 120, 160, 0, 40]
     assert [i for i, w in enumerate(wraps) if w] == [5, 10]
-    if backend == "media_foundation":
-        assert not source._ended  # rewound before the end (reopening costs ~0.3 s)
     source.release()
 
 
 def test_source_seeks_after_the_end(tmp_path, backend):
     path = tmp_path / "clip.avi"
     _gray_clip(path)
-    source = open_source(str(path), backend)
+    source = open_source(str(path), backend, OUT)
     assert source is not None
-    while source.read(loop=False)[0] is not None:
+    while source.read(False, OUT)[0] is not None:
         pass
-    assert source.read(loop=False) == (None, False)
+    assert source.read(False, OUT) == (None, False)
     assert source.seek(2)
-    frame, _ = source.read(loop=False)
+    frame, _ = source.read(False, OUT)
     assert frame is not None and _level(frame) == 80
     source.release()
 
 
-def test_source_falls_back_to_ffmpeg(tmp_path, monkeypatch):
+def test_source_seeks_between_key_frames(tmp_path, backend):
+    path = tmp_path / "clip.mp4"
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 10, (64, 48))
+    if not writer.isOpened():
+        pytest.skip("no MPEG-4 writer here")
+    for i in range(40):
+        writer.write(np.full((48, 64, 3), 10 + 5 * i, np.uint8))
+    writer.release()
+    source = open_source(str(path), backend, OUT)
+    assert source is not None and source.backend == backend
+    in_order = []  # the codec shifts the levels a little: compare with the frames read in order
+    while (frame := source.read(False, OUT)[0]) is not None:
+        in_order.append(float(frame.mean()))
+    assert len(in_order) == 40
+    for index in (25, 3, 37, 13):
+        assert source.seek(index)
+        frame, _ = source.read(False, OUT)
+        assert frame is not None and abs(float(frame.mean()) - in_order[index]) < 1.0, index  # neighbors differ by 5
+    source.release()
+
+
+def test_scaling_readers_deliver_the_output_size(tmp_path, scaling_backend):
+    path = tmp_path / "wide.avi"
+    _write_clip(path, 128, 48)  # 8:3, red band on the left quarter
+    source = open_source(str(path), scaling_backend, (64, 48, "cover"))
+    assert source is not None and source.backend == scaling_backend
+    covered, _ = source.read(False, (64, 48, "cover"))
+    assert covered.shape == (48, 64, 3)  # scaled to 128x48, the middle 64 px cut out
+    assert covered[24, 2, 2] < 80  # the red quarter falls outside
+    stretched, _ = source.read(False, (64, 48, "stretch"))  # the output changes between reads
+    assert stretched.shape == (48, 64, 3)
+    assert stretched[24, 2, 2] > 180 and stretched[24, 40, 2] < 80  # the whole width, no black bars
+    smaller, _ = source.read(False, (32, 24, "stretch"))
+    assert smaller.shape == (24, 32, 3)
+    source.release()
+
+
+def test_reader_falls_back_to_opencv_ffmpeg(tmp_path, monkeypatch):
     path = tmp_path / "clip.avi"
     _gray_clip(path)
-    capture = _video_sources._capture
-    monkeypatch.setattr(
-        _video_sources, "_capture", lambda p, backend: None if backend == "media_foundation" else capture(p, backend)
-    )
-    source = open_source(str(path), "media_foundation")
-    assert source is not None and source.backend == "ffmpeg"
-    frame, _ = source.read(loop=False)
+    monkeypatch.setitem(_video_sources._OPENERS, "media_foundation", lambda p, output: None)
+    source = open_source(str(path), "media_foundation", OUT)
+    assert source is not None and source.backend == "opencv_ffmpeg"
+    frame, _ = source.read(False, OUT)
     assert frame is not None and _level(frame) == 0
     source.release()
     with pytest.raises(ValueError):
-        open_source(str(path), "gstreamer")
+        open_source(str(path), "gstreamer", OUT)
+
+
+def test_old_backend_name_is_accepted():
+    assert _video_sources.backend_name("ffmpeg") == "opencv_ffmpeg"
+    node = VideoFileCaptureNode("v")
+    node.set_properties({"backend": "ffmpeg"})
+    assert node.properties["backend"] == "opencv_ffmpeg"
+    with pytest.raises(ValueError):
+        node.set_properties({"backend": "gstreamer"})
+
+
+def test_ffmpeg_command_falls_back_to_software_decoding(tmp_path, monkeypatch, readable_backends):
+    _require("ffmpeg_command", readable_backends)
+    from cv_nodes import _ffmpeg_command
+
+    path = tmp_path / "clip.avi"
+    _gray_clip(path)
+    # A hardware decoder that fails on the first frame gives way to the next option.
+    monkeypatch.setattr(_ffmpeg_command, "_decoder_options", lambda ffmpeg, codec: [["-c:v", "no_such_decoder"], []])
+    source = open_source(str(path), "ffmpeg_command", OUT)
+    assert source is not None and source.backend == "ffmpeg_command"
+    levels = [_level(source.read(False, OUT)[0]) for _ in range(5)]
+    assert levels == [0, 40, 80, 120, 160]
+    source.release()
 
 
 def test_read_requests_beyond_one_waiting_are_dropped(tmp_path):
@@ -474,7 +588,7 @@ def test_read_requests_beyond_one_waiting_are_dropped(tmp_path):
 
     async def run():
         node = VideoFileCaptureNode("v")
-        node.set_properties({"width": 64, "height": 48, "backend": "ffmpeg", "file_path": str(path)})
+        node.set_properties({"width": 64, "height": 48, "backend": "opencv_ffmpeg", "file_path": str(path)})
         node._do_activate()
         await _until(lambda: node._is_loaded)
         gate = threading.Event()

@@ -12,6 +12,10 @@ dependencies = [
     "numpy>=2.0",
     # 4.x wheels require numpy<2.3, which conflicts with the numpy 2.4 line.
     "opencv-python>=5.0.0.93",
+    # VideoFileCapture's avfoundation reader (macOS only; MIT)
+    "pyobjc-framework-AVFoundation>=10.3; sys_platform == 'darwin'",
+    "pyobjc-framework-CoreMedia>=10.3; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=10.3; sys_platform == 'darwin'",
 ]
 
 [project.urls]
