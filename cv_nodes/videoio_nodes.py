@@ -25,7 +25,7 @@ from nonoha_core.port import (
 )
 from nonoha_core.node import BaseNode, NodeDoc, replace_node_output_port
 
-from ._video_sources import BACKENDS, VideoSource, open_source
+from ._video_sources import BACKENDS, VideoSource, backend_name, open_source
 
 logger = logging.getLogger(__name__)
 
@@ -79,10 +79,14 @@ class VideoFileCaptureNode(BaseNode):
         },
         "backend": {
             "description": (
-                "auto (Media Foundation on Windows: hardware decoding, about a "
-                "third of the CPU for 4K; FFmpeg elsewhere), ffmpeg or "
-                "media_foundation. Files the preferred one cannot decode fall "
-                "back to FFmpeg"
+                "How frames are read: " + ", ".join(BACKENDS) + ". auto: "
+                "media_foundation on Windows, avfoundation on macOS (both "
+                "decode and scale to the output on the GPU), ffmpeg_command "
+                "(the ffmpeg program, if installed: hardware decoding where "
+                "there is a decoder, scaled before conversion), then "
+                "opencv_ffmpeg (full frames converted on the CPU). A reader "
+                "that cannot read a file gives way to the next ('ffmpeg' is "
+                "the old name of opencv_ffmpeg)"
             ),
             "data_type": "str",
             "default_value": "auto",
@@ -208,9 +212,7 @@ class VideoFileCaptureNode(BaseNode):
         # 1. Extract properties
         backend = self._backend
         if "backend" in properties:
-            backend = str(properties["backend"])
-            if backend not in BACKENDS:
-                raise ValueError(f"backend must be one of {BACKENDS}")
+            backend = backend_name(str(properties["backend"]))  # maps old names
         file_path = self._file_path
         if "file_path" in properties:
             file_path = str(properties["file_path"])
@@ -449,7 +451,7 @@ class VideoFileCaptureNode(BaseNode):
                 return None, False
             resolved_path = str(parent_graph.persist.data_dir_path / file_name)
 
-        source = open_source(resolved_path, backend)
+        source = open_source(resolved_path, backend, (self._width, self._height, self._fit))
         if source is None:
             logger.error(f"{self.name}: Failed to open video file: {resolved_path}")
             loop.call_soon_threadsafe(self._on_load_failed)
@@ -547,13 +549,14 @@ class VideoFileCaptureNode(BaseNode):
 
         Returns (frame, or None at the end of the file; wrapped).
         """
-        frame, wrapped = source.read(self._loop_enabled)
+        frame, wrapped = source.read(self._loop_enabled, (self._width, self._height, self._fit))
         if frame is None:
             return None, False
         return self._fit_frame(frame), wrapped
 
     def _fit_frame(self, frame: np.ndarray) -> np.ndarray:
-        """Bring a frame to width x height (worker thread; a no-op when it already matches)."""
+        """Bring a frame to width x height (worker thread; a no-op when it already matches,
+        as Media Foundation's frames do)."""
         width, height, fit = self._width, self._height, self._fit
         frame_h, frame_w = frame.shape[:2]
         if (frame_w == width and frame_h == height) or fit == "exact":

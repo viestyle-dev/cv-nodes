@@ -26,6 +26,55 @@ def _gray_input(node: BaseNode, name: str, callback) -> StaticTypeInputPort:
     return port
 
 
+def _blob_stats(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Pixel counts (N,) and boxes (N, 4: x, y, w, h) of the 8-connected blobs of a binary mask.
+
+    Blobs come in raster order of their first pixel (top row first, then left).
+    The same counts and boxes as ``cv2.connectedComponentsWithStats``, which
+    splits even a 320x180 mask over OpenCV's thread pool (5-20 times the CPU of
+    the work, waiting threads included). ``findContours`` runs on the calling
+    thread; the stats come from the borders without a Python loop:
+
+    - box: the extremes of the outer border
+    - pixels (Pick's theorem on the border through pixel centers): on or
+      inside an outer border A + B/2 + 1, strictly inside a hole border
+      A - B/2 + 1 (A area, B lattice points on the border); a blob is its outer
+      count minus its holes' (a blob inside a hole is a blob of its own)
+
+    The GIL is held while OpenCV builds one array per border: ~1 ms for a few
+    hundred blobs, ~10 ms for 30 000 (a 4K mask of noise).
+    """
+    contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return np.zeros(0, np.int64), np.zeros((0, 4), np.int64)
+    lengths = np.fromiter(map(len, contours), np.intp, len(contours))
+    points = np.concatenate(contours).reshape(-1, 2).astype(np.int64)
+    starts = np.zeros(len(contours), np.intp)
+    np.cumsum(lengths[:-1], out=starts[1:])
+    x, y = points[:, 0], points[:, 1]
+    following = np.arange(1, len(points) + 1)
+    following[starts + lengths - 1] = starts  # each border closes on its first point
+    xn, yn = x[following], y[following]
+    twice_area = np.abs(np.add.reduceat(x * yn - xn * y, starts))
+    # Border segments run in the 8 chain directions: max(|dx|, |dy|) lattice steps each.
+    boundary = np.add.reduceat(np.maximum(np.abs(xn - x), np.abs(yn - y)), starts)
+    parent = hierarchy[0][:, 3]
+    outer = parent < 0
+    holes = ~outer
+    hole_pixels = np.bincount(
+        parent[holes], weights=((twice_area[holes] - boundary[holes]) // 2 + 1), minlength=len(contours)
+    ).astype(np.int64)
+    pixels = ((twice_area + boundary) // 2 + 1)[outer] - hole_pixels[outer]
+    x0 = np.minimum.reduceat(x, starts)[outer]
+    y0 = np.minimum.reduceat(y, starts)[outer]
+    boxes = np.stack(
+        [x0, y0, np.maximum.reduceat(x, starts)[outer] - x0 + 1, np.maximum.reduceat(y, starts)[outer] - y0 + 1],
+        axis=1,
+    )
+    order = np.lexsort((x[starts][outer], y[starts][outer]))  # an outer border starts at its first pixel
+    return pixels[order], boxes[order]
+
+
 class OpticalFlowFarnebackNode(ThreadedComputeMixin, BaseNode):
     """Dense optical flow between consecutive gray frames (Farneback)."""
 
@@ -150,7 +199,7 @@ class BlobCounterNode(ThreadedComputeMixin, BaseNode):
             inputs={"frame": "Gray frames u8[H x W]"},
             outputs={
                 "count": "Number of moving blobs",
-                "boxes": "Blob boxes f32[N x 4]: x, y, w, h normalized to 0-1",
+                "boxes": "Blob boxes f32[N x 4]: x, y, w, h normalized to 0-1, in raster order of each blob's first pixel",
                 "mask": "Foreground mask u8[H x W] (255 = moving)",
             },
         )
@@ -181,6 +230,7 @@ class BlobCounterNode(ThreadedComputeMixin, BaseNode):
             self.outputs[port.name] = port
         self._subtractor = None
         self._kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        self._count = np.zeros(1, dtype=np.int32)
         p = self.properties
         self._min_area = float(p["min_area"])
         self._learning_rate = float(p["learning_rate"])
@@ -214,17 +264,15 @@ class BlobCounterNode(ThreadedComputeMixin, BaseNode):
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel)
 
         h, w = mask.shape
-        n, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-        # Row 0 is the background. Vectorized: a busy mask (water, leaves)
-        # has hundreds of components, and a Python loop over them holds the GIL.
-        components = stats[1:n]
-        kept = components[components[:, cv2.CC_STAT_AREA] >= self._min_area * h * w]
-        box_array = (kept[:, :4] / np.array([w, h, w, h], dtype=np.float64)).astype(np.float32)
+        pixels, boxes = _blob_stats(mask)
+        kept = boxes[pixels >= self._min_area * h * w]
+        box_array = (kept / np.array([w, h, w, h], dtype=np.float64)).astype(np.float32)
         return len(kept), box_array, mask
 
     def _emit(self, result):
         count, boxes, mask = result
-        self._out_count.dispatch([np.array([count], dtype=np.int32)])
+        self._count[0] = count  # valid during the dispatch: receivers copy what they keep
+        self._out_count.dispatch([self._count])
         self._out_boxes.dispatch([boxes[np.newaxis]])
         self._out_mask.dispatch([mask[np.newaxis]])
 

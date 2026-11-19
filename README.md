@@ -13,7 +13,8 @@ This plugin provides nodes for image and video processing within the nonoha-engi
 **Video input**
 
 - **VideoFileCapture**: Reads the frames of a video file in order, on a worker thread
-  - Media Foundation on Windows (hardware decoding), FFmpeg elsewhere
+  - Decodes and scales to the output before the frame reaches Python: Media Foundation (Windows),
+    AVFoundation (macOS), the `ffmpeg` command (Linux, Raspberry Pi); OpenCV's FFmpeg otherwise
   - Fits other sizes to the output (cover, stretch, exact); loop, seek, EOF, metadata
 
 - **CameraCapture**: Captures frames from a camera on a worker thread
@@ -123,18 +124,43 @@ the player asks).
 - **Every frame, as fast as possible** (offline analysis): drive the next
   `readout_count` from `position`, so a request is sent only after the previous
   frames were delivered.
-- **Readers** (`backend`): `auto` uses Media Foundation on Windows (the OS
-  decoders: hardware decoding and color conversion on the GPU, about a third
-  of the CPU of FFmpeg for 4K H.264) and FFmpeg elsewhere. A file the preferred
-  reader cannot open or decode falls back to FFmpeg. The log names the reader
-  used.
+- **Readers** (`backend`). The first three scale the frames to about the
+  output size before they reach Python (cover: to the smallest size that
+  covers it, then the middle is cut out), so a 4K clip costs about what its
+  output does:
+
+  | backend | Where | How |
+  | ------- | ----- | --- |
+  | `media_foundation` | Windows | Media Foundation decodes and scales on the GPU (without a Direct3D 11 device, on the CPU) |
+  | `avfoundation` | macOS | AVFoundation (VideoToolbox) decodes and scales; needs PyObjC (installed with cv-nodes on macOS) |
+  | `ffmpeg_command` | any OS with `ffmpeg` and `ffprobe` on PATH | ffmpeg decodes, on the hardware decoder when there is one, and scales and converts in one pass |
+  | `opencv_ffmpeg` | everywhere | OpenCV's bundled FFmpeg: full frames are converted to BGR and fitted on the CPU (formerly `ffmpeg`; that name is still accepted) |
+
+  `auto` tries, best first: Windows `media_foundation`, `ffmpeg_command`,
+  `opencv_ffmpeg`; macOS `avfoundation`, `ffmpeg_command`, `opencv_ffmpeg`;
+  Linux `ffmpeg_command`, `opencv_ffmpeg`. A reader that cannot open a file
+  or decode its first frame gives way to the next; the log names the reader
+  used and says when it decodes on the CPU. Another backend falls back to
+  `opencv_ffmpeg`.
+
+  Reading 4K H.264 for 640x360 (CPU per frame, a Windows laptop):
+  `media_foundation` ~1-2 ms, `ffmpeg_command` ~12 ms with its hardware
+  decoder (d3d11va) and ~32 ms without, `opencv_ffmpeg` ~64 ms.
+
+  With `ffmpeg_command`, ffmpeg tries these decoders before decoding on the
+  CPU: HEVC with `-hwaccel drm` (Raspberry Pi 4 and 5), H.264 with
+  `h264_v4l2m2m` (Raspberry Pi Zero 2 W, 3 and 4; a Pi 5 has no H.264
+  decoder), `-hwaccel vaapi` (Intel and AMD GPUs on Linux), `d3d11va`
+  (Windows), `videotoolbox` (macOS). On a Raspberry Pi 5, HEVC clips are
+  decoded in hardware up to 4K; on a Zero 2 W, H.264 up to 1080p30 (4K and
+  HEVC cannot play there in real time).
 
 #### VideoFileCapture Properties
 
 | Property | Type | Default | Description |
 | -------- | ---- | ------- | ----------- |
 | file_path | str | "" | Video file; relative paths resolve against the graph's data folder. Empty closes the file. Also an input (`@file_path`): a new path loads that file and is saved with the graph |
-| backend | str | "auto" | `auto`, `ffmpeg` or `media_foundation` |
+| backend | str | "auto" | `auto`, `media_foundation`, `avfoundation`, `ffmpeg_command` or `opencv_ffmpeg` (see Readers) |
 | width | int | 1280 | Output frame width |
 | height | int | 720 | Output frame height |
 | loop | bool | false | Restart from the first frame at the end of the file |
@@ -247,6 +273,7 @@ Each row in the faces array contains:
 - nonoha-core (nonoha-engine core library)
 - numpy >= 2.0
 - opencv-python >= 5.0.0.93
+- macOS only: pyobjc-framework-AVFoundation, -CoreMedia and -Quartz >= 10.3
 
 ### Platform-Specific Requirements
 
@@ -259,7 +286,20 @@ sudo apt install libgl1
 
 **Windows:** VideoFileCapture uses Media Foundation, which ships with
 Windows. On Windows Server it is an optional feature; without it, files
-are read with FFmpeg.
+are read with the `ffmpeg` command when installed, else OpenCV's FFmpeg.
+
+**macOS:** VideoFileCapture uses AVFoundation through PyObjC
+(`pyobjc-framework-AVFoundation`, `-CoreMedia`, `-Quartz`; installed with
+cv-nodes on macOS).
+
+**Linux and Raspberry Pi:** install ffmpeg for the scaling reader and the
+hardware decoders (`sudo apt install ffmpeg`); without it, OpenCV's FFmpeg
+reads full frames on the CPU.
+
+**Licenses of the decoders:** OpenCV's bundled FFmpeg is LGPL 2.1 (see
+opencv-python). The `ffmpeg` command is the user's own installation, run as a
+separate program and not shipped with cv-nodes. Media Foundation and
+AVFoundation are parts of the OS.
 
 ## Development
 
