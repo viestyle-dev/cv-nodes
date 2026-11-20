@@ -2,6 +2,8 @@
 
 A nonoha-engine plugin for computer vision with OpenCV: video file and camera capture, resizing, encoding, color conversion, optical flow, motion grids, moving-object counting and face detection.
 
+[cv-nodes on nonoha Hub](https://hub.nonoha.dev/plugins/official/nonoha-official/cv-nodes/): the published versions, and the engine versions and platforms they support.
+
 ## Overview
 
 This plugin provides nodes for image and video processing within the nonoha-engine visual programming environment. Frames flow between nodes as batched NumPy arrays (the capture nodes send BGR `uint8[N, H, W, 3]`), so they connect directly to other plugins' nodes. File naming follows OpenCV's `@defgroup` convention (e.g., `videoio_nodes.py` corresponds to OpenCV's `videoio` module).
@@ -45,6 +47,11 @@ This plugin provides nodes for image and video processing within the nonoha-engi
 - **FaceDetectionYN**: Face detection using YuNet DNN model
   - Outputs bounding boxes, facial landmarks (eyes, nose, mouth), and confidence scores
   - Configurable input image dimensions
+
+**Views** (shown by the editor's View node and by apps; engine 1.1 or later)
+
+- **flow-overlay**: An image with one motion arrow per grid cell; arrow length and color follow the flow magnitude
+  - Takes the vectors of MotionGrid, or a dense flow field (averaged down), and optionally the frame to draw under the arrows
 
 The sections below detail VideoFileCapture, CvtColor and FaceDetectionYN. Every node's ports and properties are also described in the engine's node catalog and in the editor.
 

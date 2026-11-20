@@ -169,9 +169,12 @@ class Reader:
 
     def _open(self, index: int) -> _AssetRead:
         if index > 0 and self.fps > 0:
-            # Half a frame early: frame `index` is the first that starts at or after it.
-            self._skip_before = self._start + (index - 0.5) / self.fps
-            return _AssetRead(self._asset, self._track, self._decode_size(), max(0.0, self._skip_before))
+            # Read from half a frame before frame `index`. The reader may first return the
+            # frame that covers that time, with its timestamp moved to it (macOS 15), so
+            # drop what starts before a quarter frame ahead of frame `index`.
+            opening = self._start + (index - 0.5) / self.fps
+            self._skip_before = opening + 0.25 / self.fps
+            return _AssetRead(self._asset, self._track, self._decode_size(), max(0.0, opening))
         self._skip_before = -1.0
         return _AssetRead(self._asset, self._track, self._decode_size(), 0.0)
 
