@@ -64,18 +64,21 @@ class _GridNode(BaseNode):
     """Shared grid outputs: energy, onsets, mean_energy; rows/cols properties."""
 
     GRID_PROPERTIES: ClassVar[dict[str, PropertyDescription]] = {
-        "rows": {"description": "Grid rows", "default_value": 6},
-        "cols": {"description": "Grid columns", "default_value": 8},
+        "rows": {"description": "Grid rows", "data_type": "i32", "default_value": 6},
+        "cols": {"description": "Grid columns", "data_type": "i32", "default_value": 8},
         "onset_threshold": {
             "description": "Cell energy above which an onset fires",
+            "data_type": "f64",
             "default_value": 1.0,
         },
         "rearm_ratio": {
             "description": "A cell re-arms when its energy falls below threshold x this ratio",
+            "data_type": "f64",
             "default_value": 0.6,
         },
         "smoothing": {
             "description": "Exponential smoothing of cell energy, 0 (none) to 0.99",
+            "data_type": "f64",
             "default_value": 0.5,
         },
     }
@@ -264,6 +267,7 @@ class FrameDiffMotionNode(_GridNode):
         **_GridNode.GRID_PROPERTIES,
         "onset_threshold": {
             "description": "Cell energy (0-1) above which an onset fires",
+            "data_type": "f64",
             "default_value": 0.05,
         },
     }

@@ -53,7 +53,7 @@ This plugin provides nodes for image and video processing within the nonoha-engi
 - **flow-overlay**: An image with one motion arrow per grid cell; arrow length and color follow the flow magnitude
   - Takes the vectors of MotionGrid, or a dense flow field (averaged down), and optionally the frame to draw under the arrows
 
-The sections below detail VideoFileCapture, CvtColor and FaceDetectionYN. Every node's ports and properties are also described in the engine's node catalog and in the editor.
+The sections below detail VideoFileCapture, CvtColor and FaceDetectionYN. Every node's ports and properties are also described in the engine's node catalog and in the editor. Every property also has an input port (`@<name>`, for example `@enabled`), so another node's output can set it.
 
 ### Registration
 

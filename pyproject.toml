@@ -1,6 +1,6 @@
 [project]
 name = "cv-nodes"
-version = "1.0.0"
+version = "1.1.0"
 description = "A nonoha-engine plugin for computer vision with OpenCV: video file and camera capture, resizing, encoding, color conversion, optical flow, motion grids, moving-object counting and face detection."
 readme = "README.md"
 authors = [{name = "VIE Inc."}]

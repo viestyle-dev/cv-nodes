@@ -87,12 +87,13 @@ class ImencodeNode(BaseNode):
         )
 
     PROPERTIES = {
-        "format": {"description": "jpg, png or webp", "default_value": "jpg"},
+        "format": {"description": "jpg, png or webp", "data_type": "str", "default_value": "jpg"},
         "quality": {
             "description": "JPEG/WebP quality 1-100, or PNG compression 0-9",
+            "data_type": "i32",
             "default_value": 80,
         },
-        "channels": {"description": "Input channels: 1 (gray), 3 (BGR) or 4 (BGRA)", "default_value": 3},
+        "channels": {"description": "Input channels: 1 (gray), 3 (BGR) or 4 (BGRA)", "data_type": "i32", "default_value": 3},
     }
 
     def __init__(self, name: str):

@@ -44,11 +44,12 @@ class ResizeNode(BaseNode):
         )
 
     PROPERTIES = {
-        "width": {"description": "Output width in pixels", "default_value": 320},
-        "height": {"description": "Output height in pixels", "default_value": 180},
-        "channels": {"description": "Channels: 1 (gray), 3 (BGR/RGB) or 4", "default_value": 3},
+        "width": {"description": "Output width in pixels", "data_type": "i32", "default_value": 320},
+        "height": {"description": "Output height in pixels", "data_type": "i32", "default_value": 180},
+        "channels": {"description": "Channels: 1 (gray), 3 (BGR/RGB) or 4", "data_type": "i32", "default_value": 3},
         "interpolation": {
             "description": "area, linear, nearest or cubic (area is best for shrinking)",
+            "data_type": "str",
             "default_value": "area",
         },
     }

@@ -254,12 +254,22 @@ def _make_port_shape(width: int, height: int, channels: int) -> tuple[int, ...]:
 
 
 class CvtColorNode(BaseNode):
+    PROPERTIES = {
+        "code": {
+            "description": "Conversion code (e.g. 'BGR2RGBA')",
+            "data_type": "str",
+            "default_value": "BGR2RGBA",
+        },
+        "width": {"description": "Frame width", "data_type": "i32", "default_value": 1280},
+        "height": {"description": "Frame height", "data_type": "i32", "default_value": 720},
+    }
+
     def __init__(self, name: str):
         super().__init__(name, "CvtColor")
 
-        code = "BGR2RGBA"
-        width = 1280
-        height = 720
+        code = str(self.properties["code"])
+        width = int(self.properties["width"])
+        height = int(self.properties["height"])
 
         cv2_code, in_ch, out_ch, batchable = CONVERSIONS[code]
         in_frame_shape = _make_port_shape(width, height, in_ch)
@@ -293,11 +303,6 @@ class CvtColorNode(BaseNode):
         # --- Register ports ---
         self.inputs[input_src.name] = input_src
         self.outputs[output_dst.name] = output_dst
-
-        # --- Properties ---
-        self.properties["code"] = code
-        self.properties["width"] = width
-        self.properties["height"] = height
 
     def set_properties(self, properties: dict[str, PropertyDataType]):
         # 1. Extract properties

@@ -91,9 +91,9 @@ class VideoFileCaptureNode(BaseNode):
             "data_type": "str",
             "default_value": "auto",
         },
-        "width": {"description": "Output frame width", "default_value": 1280},
-        "height": {"description": "Output frame height", "default_value": 720},
-        "loop": {"description": "Restart from the first frame at the end of the file", "default_value": False},
+        "width": {"description": "Output frame width", "data_type": "i32", "default_value": 1280},
+        "height": {"description": "Output frame height", "data_type": "i32", "default_value": 720},
+        "loop": {"description": "Restart from the first frame at the end of the file", "data_type": "bool", "default_value": False},
         "fit": {
             "description": (
                 "Frames of another size: cover (crop the middle to the output "
@@ -625,10 +625,10 @@ class CameraCaptureNode(BaseNode):
         )
 
     PROPERTIES = {
-        "camera_index": {"description": "Camera index (0 = first camera)", "default_value": 0},
-        "width": {"description": "Frame width", "default_value": 640},
-        "height": {"description": "Frame height", "default_value": 480},
-        "fps": {"description": "Requested capture rate", "default_value": 30.0},
+        "camera_index": {"description": "Camera index (0 = first camera)", "data_type": "i32", "default_value": 0},
+        "width": {"description": "Frame width", "data_type": "i32", "default_value": 640},
+        "height": {"description": "Frame height", "data_type": "i32", "default_value": 480},
+        "fps": {"description": "Requested capture rate", "data_type": "f64", "default_value": 30.0},
         "enabled": {
             "description": "Capture while true",
             "data_type": "bool",

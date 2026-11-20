@@ -24,10 +24,23 @@ logger = logging.getLogger(__name__)
 
 
 class FaceDetectionYNNode(BaseNode):
+    PROPERTIES = {
+        "model_path": {
+            "description": "Path to the YuNet ONNX model (relative to the data directory)",
+            "data_type": "str",
+            "default_value": "",
+        },
+        "in_image_type": {
+            "description": "Input image type (e.g. 'u8[480x640x3]')",
+            "data_type": "str",
+            "default_value": "u8[480x640x3]",
+        },
+    }
+
     def __init__(self, name: str):
         super().__init__(name, "FaceDetectionYN")
 
-        in_image_type = PortValueType(DataType.Uint8, (480, 640, 3))  # [H, W, 3]
+        in_image_type = name_to_port_value_type(str(self.properties["in_image_type"]))  # [H, W, 3]
         input_image = StaticTypeInputPort("image", [in_image_type])
         input_image.subscribe(id(self), self._on_input_image)
 
@@ -43,8 +56,8 @@ class FaceDetectionYNNode(BaseNode):
             "faces", [PortValueType(DataType.Float32, shape=(-1, 15))]
         )
 
-        # model_path = "face_detection_yunet_2023mar.onnx"
-        model_path = ""
+        # e.g. "face_detection_yunet_2023mar.onnx"
+        model_path = str(self.properties["model_path"])
 
         self._input_image = input_image
         self._in_image_type = in_image_type
@@ -54,9 +67,6 @@ class FaceDetectionYNNode(BaseNode):
 
         self.inputs[input_image.name] = input_image
         self.outputs[output_faces.name] = output_faces
-
-        self.properties["model_path"] = model_path
-        self.properties["in_image_type"] = in_image_type.name
 
     def set_properties(self, properties: dict[str, PropertyDataType]):
         model_path = self._model_path

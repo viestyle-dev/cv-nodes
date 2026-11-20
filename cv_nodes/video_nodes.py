@@ -15,6 +15,7 @@ from ._worker import ThreadedComputeMixin
 
 _THREADED_PROPERTY: PropertyDescription = {
     "description": "Run OpenCV on a background thread (latest frame wins). Off = inline",
+    "data_type": "bool",
     "default_value": True,
 }
 
@@ -93,13 +94,13 @@ class OpticalFlowFarnebackNode(ThreadedComputeMixin, BaseNode):
         )
 
     PROPERTIES = {
-        "downscale": {"description": "Compute at 1/downscale resolution (1 = full)", "default_value": 1},
-        "pyr_scale": {"description": "Pyramid scale (<1)", "default_value": 0.5},
-        "levels": {"description": "Pyramid levels", "default_value": 3},
-        "winsize": {"description": "Averaging window size", "default_value": 15},
-        "iterations": {"description": "Iterations per pyramid level", "default_value": 3},
-        "poly_n": {"description": "Pixel neighborhood for the polynomial expansion (5 or 7)", "default_value": 5},
-        "poly_sigma": {"description": "Gaussian sigma for poly_n (1.1 for 5, 1.5 for 7)", "default_value": 1.2},
+        "downscale": {"description": "Compute at 1/downscale resolution (1 = full)", "data_type": "i32", "default_value": 1},
+        "pyr_scale": {"description": "Pyramid scale (<1)", "data_type": "f64", "default_value": 0.5},
+        "levels": {"description": "Pyramid levels", "data_type": "i32", "default_value": 3},
+        "winsize": {"description": "Averaging window size", "data_type": "i32", "default_value": 15},
+        "iterations": {"description": "Iterations per pyramid level", "data_type": "i32", "default_value": 3},
+        "poly_n": {"description": "Pixel neighborhood for the polynomial expansion (5 or 7)", "data_type": "i32", "default_value": 5},
+        "poly_sigma": {"description": "Gaussian sigma for poly_n (1.1 for 5, 1.5 for 7)", "data_type": "f64", "default_value": 1.2},
         "threaded": _THREADED_PROPERTY,
     }
 
@@ -207,12 +208,14 @@ class BlobCounterNode(ThreadedComputeMixin, BaseNode):
     PROPERTIES = {
         "min_area": {
             "description": "Smallest blob as a fraction of the frame area",
+            "data_type": "f64",
             "default_value": 0.002,
         },
-        "history": {"description": "Background model history in frames", "default_value": 300},
-        "var_threshold": {"description": "MOG2 variance threshold", "default_value": 25.0},
+        "history": {"description": "Background model history in frames", "data_type": "i32", "default_value": 300},
+        "var_threshold": {"description": "MOG2 variance threshold", "data_type": "f64", "default_value": 25.0},
         "learning_rate": {
             "description": "Background learning rate 0-1, or -1 for automatic",
+            "data_type": "f64",
             "default_value": -1.0,
         },
         "threaded": _THREADED_PROPERTY,
